@@ -27,12 +27,14 @@ sshpass is needed if you do not have ssh keys setup. The script will prompt you 
 
 ## Usage
 Rig Control Script over SSH from linux terminal
-This script can be run in a linux environment, just add your panel to it and issue your command after the script 
+This script can be run in a linux environment, just add your panel to it and issue your command after the script<br>
 Examples:
+~~
 ./ec ‘sudo update-miners && sudo service ethos-miner-monitor restart’
 ./ec -c show stats
 ./ec -c 'putconf && minestop'
 ./ec -c 'tail -1 /var/run/ethos/miner_hashes.file | sed \'s/ /+/g\' | bc'
+~~
 
 ## Maintainer
 
