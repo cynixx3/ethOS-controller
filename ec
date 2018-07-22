@@ -2,7 +2,7 @@
 #
 # EthOS rig controll (by cYnIxX3)
 #
-# Version 0.3
+# Version 0.4
 #
 #####################################################################################
 # If you found this script useful please donate BitCoin to:
@@ -59,6 +59,7 @@ while getopts ':hrskc:f:' opt; do
        exit 0 ;;
     s) save_config ;;
     c) cmd="$OPTARG" ;;
+    f) file="$OPTARG" ;;
     k) make_key ;;
     h*) show_help >&2 ;;
   esac
@@ -89,6 +90,16 @@ if [[ ! -z "$cmd" ]] ; then
     fi
   done
   echo "Commands ran, waiting for any reply:"
+  sleep 3
+elif [[ ! -z "$file" ]] ; then
+  for ip in $(wget http://"$panel".ethosdistro.com/?ips=yes -q -O -) ; do
+    if ((!pass)) ; then
+      scp -o "StrictHostKeyChecking no" "$file" ethos@"$ip":"$1" &
+    else
+      sshpass -p "$pass" scp -o "StrictHostKeyChecking no" "$file" ethos@"$ip":"$1" &
+    fi
+  done
+  echo "Sending files. . ."
   sleep 3
 else
   show_help
