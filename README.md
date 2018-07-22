@@ -34,20 +34,20 @@ Examples:
 ./ec -c 'putconf && minestop'
 ./ec -c 'tail -1 /var/run/ethos/miner_hashes.file | sed \'s/ /+/g\' | bc'
 
-# Maintainer
+## Maintainer
 
 cYnIxX3 - cynixx3@gmail.com
-#####################################################################################
-# If you found this script useful please donate BitCoin to:
-# BTC 1G6DcU8GrK1JuXWEJ4CZL2cLyCT57r6en2
-# or Ethereum to:
-# ETH 0x42D23fC535af25babbbB0337Cf45dF8a54e43C37
-#####################################################################################
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~ If you found this script useful please donate BitCoin to:
+~ BTC 1G6DcU8GrK1JuXWEJ4CZL2cLyCT57r6en2
+~ or Ethereum to:
+~ ETH 0x42D23fC535af25babbbB0337Cf45dF8a54e43C37
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# Contribute
+## Contribute
 
 Feel free to ask questions, request features, or post issues here. Donations are much appreciated. Pulls are appreciated after testing.
 
-# License
+## License
 
 Free to use not to sell all rights reserved by cYnIx
