@@ -19,7 +19,7 @@ This script saves configuration files for ease of use, If you use a password to 
 
 ## Install
 
-You can install this scipt in any linux bash environment. Which is the ethOS terminal, ubunut, Mac terminal, or windows linux environment like mobaXterm or cygwin. To install run:
+You can install this scipt in any linux bash environment. Which is the ethOS terminal, ubunut, Mac terminal, or windows linux environment like mobaXterm or cygwin. To install run:<br>
 wget http://thecynix.com/rigcontrol.txt -O ec && chmod +x ec
 
 ### Dependencies
@@ -29,12 +29,12 @@ sshpass is needed if you do not have ssh keys setup. The script will prompt you 
 Rig Control Script over SSH from linux terminal
 This script can be run in a linux environment, just add your panel to it and issue your command after the script<br>
 Examples:
-~~
+~~~~~~~~~~
 ./ec ‘sudo update-miners && sudo service ethos-miner-monitor restart’
 ./ec -c show stats
 ./ec -c 'putconf && minestop'
 ./ec -c 'tail -1 /var/run/ethos/miner_hashes.file | sed \'s/ /+/g\' | bc'
-~~
+~~~~~~~~~~
 
 ## Maintainer
 
