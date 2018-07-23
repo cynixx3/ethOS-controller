@@ -2,11 +2,9 @@
 #
 # Miner control for EthOS rigs (by cYnIxX3)
 #
-# Version 0.6.9
+# Version 0.7
 #
-# You can run this script remotely it will save a local config file unless you use -r
-# Test:     bash <(curl -s http://thecynix.com/rigcontrol.txt) -qc echo "Response from \$(hostname)"
-# Usage Opions:   bash <(curl -s http://thecynix.com/rigcontrol.txt) -h
+# Test:     bash <(curl -s http://thecynix.com/rigcontrol.txt) echo test 1 2 3
 # Quick setup ssh keys and remove the plain text password
 # Secure:   bash <(curl -s http://thecynix.com/rigcontrol.txt) -qkr
 #
@@ -25,8 +23,7 @@
 
 # Configure defaults
 delay="2"
-sshoptions="-o StrictHostKeyChecking=no"
-debug=""
+sshoptions="-o StrictHostKeyChecking no"
 
 # Lets make some functions
 set -o pipefail
@@ -44,19 +41,19 @@ function show_help() {
  exit 9
 }
 function get_panel() {
-cl=0
-if [ -e /var/run/ethos/url.file ] ; then
-  until [[ "$usepanel" =~ ^[yY]([eE][sS])?$|^[nN][oO]?$ ]] ; do
-    read -r -p "EthOS detected, would you like to use IP's from: $(cat /var/run/ethos/url.file) (y/n) : " usepanel
+c=0
+if [[ -e /var/run/ethos/url.file ]] ; then
+    while [[ ! ($sendkey =~ ^[yY]([eE][sS])?$|^[nN][oO]?$) ]]; do
+  read -r -p "EthOS detected, would you like to use IP's from: $(cat /var/run/ethos/url.file) (y/n) : " usepanel
   done
-  if [[ "$usepanel" =~ ^[yY]([eE][sS])?$ ]] ; then
-    [[ $(cat /var/run/ethos/url.file) =~ [a-zA-Z0-9]{6} ]]
+  if [[ $usepanel =~ ^[yY]([eE][sS])?$ ]] ; then
+    [[ $(cat /var/run/ethos/url.file) =~ [a-zA-Z0-9]{6,} ]]
     panel=${BASH_REMATCH[0]}
   fi
 else 
-  until [[ "$panel" =~ ^[a-zA-Z0-9]{6}$|^$ && $cl -ge 1 ]] ; do 
+  until [[ ($panel =~ ^[a-zA-Z0-9]{6,}$|^$) && $c -ge 1 ]] ; do 
     read -r -p "Enter EthOS panel name (6 characters)(leave blank to set an IP range) : " panel
-    cl=$((cl + 1))
+  c=$((c + 1))
   done
 fi
 }
@@ -64,12 +61,12 @@ function save_config() {
   echo ""
   echo "Config Wizard - If you get asked the same question again check formatting."
   get_panel
-  if [ -z "$panel" ] ; then
+  if [[ -z $panel ]] ; then
   # You can use two octet subnet and IP's without changes
-  until [[ "$network" =~ ^([0-1]?[0-9]?[0-9]\.|2[0-5][0-9]\.)+?([0-1]?[0-9]?[0-9]|2[0-5][0-9])$ ]] ; do
+    until [[ $network =~ ^([[:digit:]]{1,3}\.){1,2}?([[:digit:]]{1,3})$ ]] ; do
       read -r -p "What is the first three octets (subnet) of the IP address separated by dots? (e.g. 192.168.0) : " network
     done
-    until [[ "$range" =~ ^([0-1]?[0-9]?[0-9]\.|2[0-5][0-9]\.)?([0-1]?[0-9]?[0-9]|2[0-5][0-9])$ ]] ; do
+    until [[ $range =~ ^([[:digit:]]{1,3}\.){,1}?([[:digit:]]{1,3})$ ]] ; do
       read -r -p "Enter the last octet of each IP separated by a space (2 3 10 100 101) : " -a range
     done
   fi
@@ -78,16 +75,16 @@ function save_config() {
   echo "Default password is 'live', leave blank if using ssh keys"
   read -r -p "Enter your SSH pass and press [Enter] : " -s pass
   printf '\n'
-  if [ ! -z "$panel" ] ; then  
+  if [[ ! -z $panel ]] ; then  
     printf 'panel=%s\npass=%s\n' "$panel" "$pass" > "$config"
   else
     printf 'network=%s\nrange=(%s)\npass="%s"\n' "$network" "${range[*]}" "$pass" > "$config"
   fi
-  if [ -e "$config" ]; then echo "$config written"; fi
+  if [[ -e $config ]]; then echo "$config written"; fi
 }
 function load_config() {
-if [ -e "$config" ] ; then
-  if [ -z "$cl" ] ; then echo "Found $config, using it."; fi
+if [[ -e $config ]] ; then
+  if [[ -z $c ]] ; then echo "Found $config, using it."; fi
   # shellcheck source=/dev/null
   source "$config"
   echo ""
@@ -96,11 +93,11 @@ else
 fi
 }
 function make_key() {
-if [ -z "$panel" ] ; then get_panel; fi
+if [[ -z $panel ]] ; then get_panel; fi
   lkeyfile="$HOME/.ssh/ethos-$panel" rkeyfile="/home/ethos/.ssh/authorized_keys"
-  if [ -e "$lkeyfile" ] ; then
+  if [[ -e $lkeyfile ]] ; then
     printf '%s/.ssh/ethos-%s key set already generated.\n' "$HOME" "$panel"
-    while [[ ! ("$sendkey" =~ ^[yY]([eE][sS])?$|^[nN][oO]?$) ]]; do
+    while [[ ! ($sendkey =~ ^[yY]([eE][sS])?$|^[nN][oO]?$) ]]; do
       read -r -p "Would you like to send that key to all rigs? (y/n) : " sendkey
     done
   if [[ $sendkey =~ ^[yY]([eE][sS])?$ ]] ; then
@@ -130,7 +127,7 @@ fi
 # Lets find the users options
 while getopts 'hrskqid:c:f:' opt; do
   case "$opt" in
-    r) if [ -e "$config" ] ; then
+    r) if [[ -e $config ]] ; then
 	 rm "$config"; echo "removed $config" >&2
        else
          echo "No config to remove (did you make it with a different filename or in a different folder?)"
@@ -153,76 +150,33 @@ else
   shift $(($OPTIND-1)); extra=( "$*" )
 fi
 
-mapfile -t identfile < <(find "$HOME"/.ssh/ -regextype posix-extended -regex '.*ethos\-[a-zA-Z0-9]?{6}$')
-if [ "$pass" ] ; then
-  ident=""
-elif [ "${identfile[2]}" ] ; then 
-  ident="-i \"${identfile[0]}\" -i \"${identfile[1]}\" -i \"${identfile[2]}\" "
-elif [ "${identfile[1]}" ] ; then 
-  ident=" -i ${identfile[0]} -i ${identfile[1]}"
-elif [ "${identfile[0]}" ] ; then 
-  ident=" -i ${identfile[0]}"
-else 
-  echo "No pass and no key found. Starting config wizard."
-  save_config
-fi
-#echo "$ident"
-
 # Prep IP array
-if [ "$panel" ] && [ -z "$range" ] ; then
+if [[ ! -z $panel && -z $range ]] ; then
   mapfile -t iplist < <(wget http://"$panel".ethosdistro.com/?ips=yes -q -O -)
-elif [ ! -z "$range" ] ; then
+elif [[ ! -z $range ]] ; then
   for addr in ${range[*]} ; do 
     iplist+=("$network"."$addr")
   done
 fi
 ipls=($(echo "${iplist[@]}"|tr " " "\n"|sort -n -t . -k 3,3 -k 4,4 |tr "\n" " "))
 
-# Can you use sshpass? Would you like to try and install it?
-if ! [ -x "$(command -v sshpass)" ] && [ ! -z  "$pass" ]; then 
-  echo "Warning: sshpass is not installed on this system"
-  while [[ ! ("$isshp" =~ ^[yY]([eE][sS])?$|^[nN][oO]?$) ]]; do
-    read -r -p "Would you like to try and automatically install sshpass? : " isshp
-  done
-  if [[ $isshp =~ ^[yY]([eE][sS])?$ ]]; then
-    if  [ -x "$(command -v apt-get-ubuntu)" ]; then
-      echo "EthOS detected, attempting install"
-      /usr/bin/sudo /usr/local/bin/apt-get-ubuntu -yqq install sshpass
-    elif [ -x "$(command -v apt-get)" ]; then
-      echo "apt-get detected, attempting install"
-      /usr/bin/sudo /usr/bin/apt-get -yqq install sshpass
-    elif [ -x "$(command -v yum)" ]; then
-      echo "Yum detected, attempting install"
-      /usr/bin/sudo /usr/local/bin/yum -y install sshpass
-    else 
-      echo "Unable to auto install"
-    fi
-  else
-    echo "Please install sshpass on this machine or manually install ssh keys on the remote rigs."
-    exit 5
-  fi
-  if [ -x "$(command -v sshpass)" ]; then 
-    printf 'Success: sshpass has been successfully installed\n'
-  fi
-fi
- 
 # The Work load. Command or file, for each IP on the panel, key or pass authentication, one at a time or all at once?
-if [ "$cmd" ] ; then
+if [[ ! -z $cmd ]] ; then
   for ip in "${ipls[@]}" ; do
     echo "$cmd ${extra[*]} sent to $ip"
-    if [ -z "$pass" ] && [ -z $quick ] ; then
-      eval ssh "$debug""$sshoptions""$ident" ethos@"$ip" "$cmd ${extra[*]}" || continue
+    if ((!pass)) && [ -z $quick ] ; then
+      ssh "$sshoptions" ethos@"$ip" "$cmd ${extra[*]}" || continue
       sleep "$delay"
-    elif [ -z "$pass" ] ; then
-      eval ssh "$sshoptions""$ident""$debug" ethos@"$ip" "$cmd ${extra[*]}" & disown $!
-    elif [ -z "$quick" ] ; then
-      sshpass -p "$pass" ssh "$sshoptions""$debug" ethos@"$ip" "$cmd ${extra[*]}" || continue
+    elif ((!pass)) ; then
+      ssh "$sshoptions" ethos@"$ip" "$cmd ${extra[*]}" & disown $!
+    elif [ -z $quick ] ; then
+      sshpass -p "$pass" ssh "$sshoptions" ethos@"$ip" "$cmd ${extra[*]}" || continue
       sleep "$delay"
     else
-      sshpass -p "$pass" ssh "$sshoptions""$debug" ethos@"$ip" "$cmd ${extra[*]}" & disown $!
+      sshpass -p "$pass" ssh "$sshoptions" ethos@"$ip" "$cmd ${extra[*]}" & disown $!
     fi
   done
-  if [ "$quick" ] ; then
+  if [ ! -z $quick ] ; then
     echo ""
     echo "Commands issued, waiting for any reply:"
     sleep 4
@@ -238,21 +192,21 @@ if [ "$cmd" ] ; then
 #  done
 #  echo ""
 #  sleep 7
-elif [ "$file" ] ; then
+elif [[ ! -z $file ]] ; then
   for ip in "${ipls[@]}" ; do
-    if [ -z "$pass" ] && [ -z $quick ] ; then
-      eval scp "$sshoptions""$ident""$debug" "$file" ethos@"$ip":"${extra[0]}" || continue
+    if ((!pass)) && [ -z $quick ] ; then
+      scp "$sshoptions" "$file" ethos@"$ip":"${extra[0]}" || continue
       sleep "$delay"
-    elif [ -z "$pass" ] ; then
-      eval scp "$sshoptions""$ident""$debug" "$file" ethos@"$ip":"${extra[0]}" & disown $!
-    elif [ -z "$quick" ] ; then
-      sshpass -p "$pass" scp "$sshoptions""$debug" "$file" ethos@"$ip":"${extra[0]}" || continue
+    elif ((!pass)) ; then
+      scp "$sshoptions" "$file" ethos@"$ip":"${extra[0]}" & disown $!
+    elif [ -z $quick ] ; then
+      sshpass -p "$pass" scp "$sshoptions" "$file" ethos@"$ip":"${extra[0]}" || continue
       sleep "$delay"
     else
-      sshpass -p "$pass" scp "$sshoptions""$debug" "$file" ethos@"$ip":"${extra[0]}" & disown $!
+      sshpass -p "$pass" scp "$sshoptions" "$file" ethos@"$ip":"${extra[0]}" & disown $!
     fi
   done
-  if [ ! -z "$quick" ] ; then
+  if [ ! -z $quick ] ; then
     echo "Sending files. . ."
     sleep 5
   fi
