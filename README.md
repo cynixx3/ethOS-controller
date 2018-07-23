@@ -33,8 +33,8 @@ Examples:
 ~~~~~
 ./ec ‘sudo update-miners && sudo service ethos-miner-monitor restart’
 ./ec -c show stats
-./ec -c 'putconf && minestop'
-./ec -c 'tail -1 /var/run/ethos/miner_hashes.file | sed \'s/ /+/g\' | bc'
+./ec -qc 'putconf && minestop'
+./ec -d0 -c 'tail -1 /var/run/ethos/miner_hashes.file | sed \'s/ /+/g\' | bc'
 ./ec -f rx5708-113-XFXD009-100-samsung-modifiedstraps.rom /home/ethos/
 ~~~~~
 
