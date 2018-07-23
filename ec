@@ -2,16 +2,11 @@
 #
 # Miner control for EthOS rigs (by cYnIxX3)
 #
-# Version 0.6
+# Version 0.6.9
 #
-#####################################################################################
-# If you found this script useful please donate BitCoin to:
-# BTC= 1G6DcU8GrK1JuXWEJ4CZL2cLyCT57r6en2
-# or Ethereum to:
-# ETH= 0x42D23fC535af25babbbB0337Cf45dF8a54e43C37
-#####################################################################################
-#
-# Test:     bash <(curl -s http://thecynix.com/rigcontrol.txt) echo test 1 2 3
+# You can run this script remotely it will save a local config file unless you use -r
+# Test:     bash <(curl -s http://thecynix.com/rigcontrol.txt) -qc echo "Response from \$(hostname)"
+# Usage Opions:   bash <(curl -s http://thecynix.com/rigcontrol.txt) -h
 # Quick setup ssh keys and remove the plain text password
 # Secure:   bash <(curl -s http://thecynix.com/rigcontrol.txt) -qkr
 #
@@ -20,43 +15,79 @@
 #   even    ./ec -c "tail -1 /var/run/ethos/miner_hashes.file | sed 's/ /+/g' | bc"
 # This script will save a config file so you can quickly run commands in the future.
 #   Use ./ec -r as the last command to remove config file with the pass info
+#
+#####################################################################################
+# If you found this script useful please donate BitCoin to:
+# BTC 1G6DcU8GrK1JuXWEJ4CZL2cLyCT57r6en2
+# or Ethereum to:
+# ETH 0x42D23fC535af25babbbB0337Cf45dF8a54e43C37
+#####################################################################################
 
-# Configure pause between commands and ssh options
+# Configure defaults
 delay="2"
-sshoptions="StrictHostKeyChecking no"
+sshoptions="-o StrictHostKeyChecking=no"
+debug=""
 
 # Lets make some functions
 set -o pipefail
 function show_help() {
- printf 'script usage: ./%s [-r] [-s] [-k] [-h] [-q] [-c] "minercommand && minercommand2" [-f] path/to/orgin/file path/to/remote/file\n' "$(basename $0)"
+ printf 'Usage: ./%s [-r|-s|-k|-h|-q] [-d 1m] [-c "minercommand && minercommand2"] [-f path/to/orgin/file path/to/remote/file]\n' "$(basename $0)"
  echo "   -r will delete the config (stored in current directory)"
- echo "   -s will start the config wizard and save a new config"
+ echo "   -s will start the config wizard and save the config file based on script name"
  echo "   -h will launch this help guide"
  echo "   -k will generate and install ssh keys (~/.ssh/ethos.$panel.pub)"
  echo "   -q will command all miners at once (in subshells)"
  echo "   -d will add delay between commands run (2 seconds is default, can also be #m,#h,and #d)"
- echo "   -c will run any command following it (double quote commands that use &<>|*\$()\")"
+ echo "   -c will run any command following it (quote commands that use these symbols: -&<>|*\$()\")"
  echo "   -f will send a local file to all remote servers (can be dynamic or absolute paths)"
- echo "  Note: you can string arguments and commands like -skr or -scecho test or -fbios.rom folder/modbios.rom"
+ echo "  Note: you can string arguments and commands like -qkr or -qcecho 0 or -sqf bios.rom folder/modbios.rom"
  exit 9
 }
-function save_config() {
-  if [[ -e /var/run/ethos/url.file ]] ; then
-    panel=$(cat /var/run/ethos/url.file)
-  else
-    read -r -p "Enter panel name (6 characters): " panel
+function get_panel() {
+cl=0
+if [ -e /var/run/ethos/url.file ] ; then
+  until [[ "$usepanel" =~ ^[yY]([eE][sS])?$|^[nN][oO]?$ ]] ; do
+    read -r -p "EthOS detected, would you like to use IP's from: $(cat /var/run/ethos/url.file) (y/n) : " usepanel
+  done
+  if [[ "$usepanel" =~ ^[yY]([eE][sS])?$ ]] ; then
+    [[ $(cat /var/run/ethos/url.file) =~ [a-zA-Z0-9]{6} ]]
+    panel=${BASH_REMATCH[0]}
   fi
+else 
+  until [[ "$panel" =~ ^[a-zA-Z0-9]{6}$|^$ && $cl -ge 1 ]] ; do 
+    read -r -p "Enter EthOS panel name (6 characters)(leave blank to set an IP range) : " panel
+    cl=$((cl + 1))
+  done
+fi
+}
+function save_config() {
+  echo ""
+  echo "Config Wizard - If you get asked the same question again check formatting."
+  get_panel
+  if [ -z "$panel" ] ; then
+  # You can use two octet subnet and IP's without changes
+  until [[ "$network" =~ ^([0-1]?[0-9]?[0-9]\.|2[0-5][0-9]\.)+?([0-1]?[0-9]?[0-9]|2[0-5][0-9])$ ]] ; do
+      read -r -p "What is the first three octets (subnet) of the IP address separated by dots? (e.g. 192.168.0) : " network
+    done
+    until [[ "$range" =~ ^([0-1]?[0-9]?[0-9]\.|2[0-5][0-9]\.)?([0-1]?[0-9]?[0-9]|2[0-5][0-9])$ ]] ; do
+      read -r -p "Enter the last octet of each IP separated by a space (2 3 10 100 101) : " -a range
+    done
+  fi
+  echo ""
   echo "Warning: saving your password in an unencrypted file. remove the config with $(basename $0) -r."
   echo "Default password is 'live', leave blank if using ssh keys"
-  read -r -p "Enter your SSH pass and press [Enter]: " -s pass
+  read -r -p "Enter your SSH pass and press [Enter] : " -s pass
   printf '\n'
-  printf 'panel=%s\npass=%s\n' "$panel" "$pass" > "$config"
-  echo "$config written"
-  echo ""
+  if [ ! -z "$panel" ] ; then  
+    printf 'panel=%s\npass=%s\n' "$panel" "$pass" > "$config"
+  else
+    printf 'network=%s\nrange=(%s)\npass="%s"\n' "$network" "${range[*]}" "$pass" > "$config"
+  fi
+  if [ -e "$config" ]; then echo "$config written"; fi
 }
 function load_config() {
-if [[ -e $config ]] ; then
-  echo "Found config file $config, using it."
+if [ -e "$config" ] ; then
+  if [ -z "$cl" ] ; then echo "Found $config, using it."; fi
   # shellcheck source=/dev/null
   source "$config"
   echo ""
@@ -65,13 +96,26 @@ else
 fi
 }
 function make_key() {
-  if [[ ! -e ~/.ssh/ethos-"$panel".pub ]] ; then
-    ssh-keygen -t rsa -N "" -C "EthOS key for $panel network" -f ~/.ssh/ethos-"$panel" || exit 2
-    pubkey=$(cat ~/.ssh/ethos-"$panel".pub)
-    cmd="echo $pubkey >> ~/.ssh/authorized_keys && chmod 600 .ssh/authorized_keys"
+if [ -z "$panel" ] ; then get_panel; fi
+  lkeyfile="$HOME/.ssh/ethos-$panel" rkeyfile="/home/ethos/.ssh/authorized_keys"
+  if [ -e "$lkeyfile" ] ; then
+    printf '%s/.ssh/ethos-%s key set already generated.\n' "$HOME" "$panel"
+    while [[ ! ("$sendkey" =~ ^[yY]([eE][sS])?$|^[nN][oO]?$) ]]; do
+      read -r -p "Would you like to send that key to all rigs? (y/n) : " sendkey
+    done
+  if [[ $sendkey =~ ^[yY]([eE][sS])?$ ]] ; then
+    cmd="echo $(cat "$lkeyfile".pub) >> $rkeyfile && chmod 600 $rkeyfile && sort -u $rkeyfile -o $rkeyfile"
+    delay="0"
+    else
+      echo "To save the key to a rig manually run:"
+      echo "   ssh-copy-id -i $lkeyfile.pub ethos@RigIPAddress"
+      echo "Nothing further todo."
+      exit 1
+    fi
   else
-    echo "ethos-$panel.pub key already generated - Exiting"
-    exit 1
+    ssh-keygen -t rsa -N "" -C "== EthOS net $panel" -f "$HOME"/.ssh/ethos-"$panel" || exit 2
+    lkeyfile="$HOME/.ssh/ethos-$panel" rkeyfile="/home/ethos/.ssh/authorized_keys"
+    cmd="echo $(cat "$lkeyfile".pub) >> $rkeyfile && chmod 600 $rkeyfile && sort -u $rkeyfile -o $rkeyfile"
   fi
 }
 
@@ -86,7 +130,7 @@ fi
 # Lets find the users options
 while getopts 'hrskqid:c:f:' opt; do
   case "$opt" in
-    r) if [[ -e $config ]] ; then
+    r) if [ -e "$config" ] ; then
 	 rm "$config"; echo "removed $config" >&2
        else
          echo "No config to remove (did you make it with a different filename or in a different folder?)"
@@ -109,38 +153,103 @@ else
   shift $(($OPTIND-1)); extra=( "$*" )
 fi
 
+mapfile -t identfile < <(find "$HOME"/.ssh/ -regextype posix-extended -regex '.*ethos\-[a-zA-Z0-9]?{6}$')
+if [ "$pass" ] ; then
+  ident=""
+elif [ "${identfile[2]}" ] ; then 
+  ident="-i \"${identfile[0]}\" -i \"${identfile[1]}\" -i \"${identfile[2]}\" "
+elif [ "${identfile[1]}" ] ; then 
+  ident=" -i ${identfile[0]} -i ${identfile[1]}"
+elif [ "${identfile[0]}" ] ; then 
+  ident=" -i ${identfile[0]}"
+else 
+  echo "No pass and no key found. Starting config wizard."
+  save_config
+fi
+#echo "$ident"
+
+# Prep IP array
+if [ "$panel" ] && [ -z "$range" ] ; then
+  mapfile -t iplist < <(wget http://"$panel".ethosdistro.com/?ips=yes -q -O -)
+elif [ ! -z "$range" ] ; then
+  for addr in ${range[*]} ; do 
+    iplist+=("$network"."$addr")
+  done
+fi
+ipls=($(echo "${iplist[@]}"|tr " " "\n"|sort -n -t . -k 3,3 -k 4,4 |tr "\n" " "))
+
+# Can you use sshpass? Would you like to try and install it?
+if ! [ -x "$(command -v sshpass)" ] && [ ! -z  "$pass" ]; then 
+  echo "Warning: sshpass is not installed on this system"
+  while [[ ! ("$isshp" =~ ^[yY]([eE][sS])?$|^[nN][oO]?$) ]]; do
+    read -r -p "Would you like to try and automatically install sshpass? : " isshp
+  done
+  if [[ $isshp =~ ^[yY]([eE][sS])?$ ]]; then
+    if  [ -x "$(command -v apt-get-ubuntu)" ]; then
+      echo "EthOS detected, attempting install"
+      /usr/bin/sudo /usr/local/bin/apt-get-ubuntu -yqq install sshpass
+    elif [ -x "$(command -v apt-get)" ]; then
+      echo "apt-get detected, attempting install"
+      /usr/bin/sudo /usr/bin/apt-get -yqq install sshpass
+    elif [ -x "$(command -v yum)" ]; then
+      echo "Yum detected, attempting install"
+      /usr/bin/sudo /usr/local/bin/yum -y install sshpass
+    else 
+      echo "Unable to auto install"
+    fi
+  else
+    echo "Please install sshpass on this machine or manually install ssh keys on the remote rigs."
+    exit 5
+  fi
+  if [ -x "$(command -v sshpass)" ]; then 
+    printf 'Success: sshpass has been successfully installed\n'
+  fi
+fi
+ 
 # The Work load. Command or file, for each IP on the panel, key or pass authentication, one at a time or all at once?
-if [[ ! -z "$cmd" ]] ; then
-  for ip in $(wget http://"$panel".ethosdistro.com/?ips=yes -q -O -) ; do
+if [ "$cmd" ] ; then
+  for ip in "${ipls[@]}" ; do
     echo "$cmd ${extra[*]} sent to $ip"
-    if ((!pass)) && [ -z "$quick" ] ; then
-      ssh -o "$sshoptions" ethos@"$ip" "$cmd ${extra[*]}"
+    if [ -z "$pass" ] && [ -z $quick ] ; then
+      eval ssh "$debug""$sshoptions""$ident" ethos@"$ip" "$cmd ${extra[*]}" || continue
       sleep "$delay"
-    elif ((!pass)) ; then
-      ssh -o "$sshoptions" ethos@"$ip" "$cmd ${extra[*]}" & disown $!
+    elif [ -z "$pass" ] ; then
+      eval ssh "$sshoptions""$ident""$debug" ethos@"$ip" "$cmd ${extra[*]}" & disown $!
     elif [ -z "$quick" ] ; then
-      sshpass -p "$pass" ssh -o "$sshoptions" ethos@"$ip" "$cmd ${extra[*]}"
+      sshpass -p "$pass" ssh "$sshoptions""$debug" ethos@"$ip" "$cmd ${extra[*]}" || continue
       sleep "$delay"
     else
-      sshpass -p "$pass" ssh -o "$sshoptions" ethos@"$ip" "$cmd ${extra[*]}" & disown $!
+      sshpass -p "$pass" ssh "$sshoptions""$debug" ethos@"$ip" "$cmd ${extra[*]}" & disown $!
     fi
   done
-  if [ ! -z "$quick" ] ; then
+  if [ "$quick" ] ; then
+    echo ""
     echo "Commands issued, waiting for any reply:"
     sleep 4
   fi
-elif [[ ! -z "$file" ]] ; then
-  for ip in $(wget http://"$panel".ethosdistro.com/?ips=yes -q -O -) ; do
-    if ((!pass)) && [ -z "$quick" ] ; then
-      scp -o "$sshoptions" "$file" ethos@"$ip":"${extra[0]}"
+#elif [[ ! -z "$key" ]] ; then
+#  for ip in "${ipls[@]}" ; do
+#    echo "SSH key sent to $ip"
+#    if ((!pass)) ; then
+#      ssh-copy-id -i "$key" ethos@"$ip" & disown $!
+#    else
+#      sshpass -p "$pass" ssh-copy-id -i "$key" ethos@"$ip" & disown $!
+#    fi
+#  done
+#  echo ""
+#  sleep 7
+elif [ "$file" ] ; then
+  for ip in "${ipls[@]}" ; do
+    if [ -z "$pass" ] && [ -z $quick ] ; then
+      eval scp "$sshoptions""$ident""$debug" "$file" ethos@"$ip":"${extra[0]}" || continue
       sleep "$delay"
-    elif ((!pass)) ; then
-      scp -o "$sshoptions" "$file" ethos@"$ip":"${extra[0]}" & disown $!
+    elif [ -z "$pass" ] ; then
+      eval scp "$sshoptions""$ident""$debug" "$file" ethos@"$ip":"${extra[0]}" & disown $!
     elif [ -z "$quick" ] ; then
-      sshpass -p "$pass" scp -o "$sshoptions" "$file" ethos@"$ip":"${extra[0]}"
+      sshpass -p "$pass" scp "$sshoptions""$debug" "$file" ethos@"$ip":"${extra[0]}" || continue
       sleep "$delay"
     else
-      sshpass -p "$pass" scp -o "$sshoptions" "$file" ethos@"$ip":"${extra[0]}" & disown $!
+      sshpass -p "$pass" scp "$sshoptions""$debug" "$file" ethos@"$ip":"${extra[0]}" & disown $!
     fi
   done
   if [ ! -z "$quick" ] ; then
@@ -148,5 +257,4 @@ elif [[ ! -z "$file" ]] ; then
     sleep 5
   fi
 fi
-unset cmd extra file quick pass config opt OPTARG
 echo "Done"
