@@ -1,6 +1,7 @@
 #!/bin/bash -e
 #
-# Miner control for EthOS rigs (by cYnIxX3)
+# Miner control for EthOS rigs (by cYnIxX3) 
+# https://github.com/cynixx3/ethOS-controller
 #
 # Version 0.6.9
 #
