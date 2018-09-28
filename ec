@@ -115,6 +115,7 @@ if [ -z "$panel" ] ; then get_panel; fi
     fi
   else
     ssh-keygen -t rsa -N "" -C "== EthOS net $panel" -f "$HOME"/.ssh/ethos-"$panel" || exit 2
+    ssh-add "$lkeyfile"
     lkeyfile="$HOME/.ssh/ethos-$panel" rkeyfile="/home/ethos/.ssh/authorized_keys"
     cmd="echo $(cat "$lkeyfile".pub) >> $rkeyfile && chmod 600 $rkeyfile && sort -u $rkeyfile -o $rkeyfile"
   fi
@@ -154,15 +155,17 @@ else
   shift $(($OPTIND-1)); extra=( "$*" )
 fi
 
+# If you have more than one key, lets narrow it down by panel
 mapfile -t identfile < <(find "$HOME"/.ssh/ -regextype posix-extended -regex '.*ethos\-[a-zA-Z0-9]?{6}$')
+for i in "${!identfile[@]}"; do
+   if [[ "${identfile[$i]}" =~ "ethos-$panel" ]]; then
+       identpos="${i}";
+   fi
+done
 if [ "$pass" ] ; then
   ident=""
-elif [ "${identfile[2]}" ] ; then 
-  ident="-i \"${identfile[0]}\" -i \"${identfile[1]}\" -i \"${identfile[2]}\" "
-elif [ "${identfile[1]}" ] ; then 
-  ident=" -i ${identfile[0]} -i ${identfile[1]}"
-elif [ "${identfile[0]}" ] ; then 
-  ident=" -i ${identfile[0]}"
+elif [ "$identpos" ] ; then
+  ident=" -i \"${identfile[$identpos]}\""
 else 
   echo "No pass and no key found. Starting config wizard."
   save_config
@@ -212,15 +215,15 @@ if [ "$cmd" ] ; then
   for ip in "${ipls[@]}" ; do
     echo "$cmd ${extra[*]} sent to $ip"
     if [ -z "$pass" ] && [ -z $quick ] ; then
-      eval ssh "$debug""$sshoptions""$ident" ethos@"$ip" "$cmd ${extra[*]}" || continue
+      eval ssh "$debug" "$sshoptions""$ident" ethos@"$ip" \'"$cmd ${extra[*]}"\' || continue
       sleep "$delay"
     elif [ -z "$pass" ] ; then
-      eval ssh "$sshoptions""$ident""$debug" ethos@"$ip" "$cmd ${extra[*]}" & disown $!
+      eval ssh "$debug" "$sshoptions""$ident" ethos@"$ip" \'"$cmd ${extra[*]}"\' & disown $!
     elif [ -z "$quick" ] ; then
-      sshpass -p "$pass" ssh "$sshoptions""$debug" ethos@"$ip" "$cmd ${extra[*]}" || continue
+      sshpass -p "$pass" ssh "$debug" "$sshoptions" ethos@"$ip" "$cmd ${extra[*]}" || continue
       sleep "$delay"
     else
-      sshpass -p "$pass" ssh "$sshoptions""$debug" ethos@"$ip" "$cmd ${extra[*]}" & disown $!
+      sshpass -p "$pass" ssh "$debug""$sshoptions" ethos@"$ip" "$cmd ${extra[*]}" & disown $!
     fi
   done
   if [ "$quick" ] ; then
