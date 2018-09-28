@@ -1,24 +1,28 @@
 #!/bin/bash -e
 #
-# Miner control for EthOS rigs (by cYnIxX3) 
-# https://github.com/cynixx3/ethOS-controller
+# Miner control for EthOS rigs (by cYnIxX3)
 #
-# Version 0.6.9
+# Version 0.7
 #
 # You can run this script remotely it will save a local config file unless you use -r
-# Test:     bash <(curl -s http://thecynix.com/rigcontrol.txt) -qc echo "Response from \$(hostname)"
+# Test:     bash <(curl -s http://thecynix.com/rigcontrol.txt) -qc ethos-readconf worker
 # Usage Opions:   bash <(curl -s http://thecynix.com/rigcontrol.txt) -h
 # Quick setup ssh keys and remove the plain text password
-# Secure:   bash <(curl -s http://thecynix.com/rigcontrol.txt) -qkr
+# Install SSHKeys:   bash <(curl -s http://thecynix.com/rigcontrol.txt) -qkr
 #
-# Install:  wget http://thecynix.com/rigcontrol.txt -O ec && chmod +x ec
-# Use:      ./ec -c show stats or ./ec -c "putconf && minestop"
-#   even    ./ec -c "tail -1 /var/run/ethos/miner_hashes.file | sed 's/ /+/g' | bc"
+# Install:          wget http://thecynix.com/rigcontrol.txt -O ec && chmod +x ec
+# Use example:      ./ec -c show stats or ./ec -c "putconf && minestop" or ./ec -c cat remote.conf
+# Get hash rates    ./ec -c "tail -1 /var/run/ethos/miner_hashes.file | sed 's/ /+/g' | bc"
+# Reset all reboot counts    ./ec -qc "echo 0 > /opt/ethos/etc/autorebooted.file"
+# Change pass on all miners  ./ec -c "sudo usermod --password $(mkpasswd New_Pass_Here) ethos"
+# Remote conf on all rigs    ./ec -qc "sed -i '1s=^=https://configmaker.com/my/PutYourOwnConfigHere.txt\n=' remote.conf"
+# Flash all gpus on all rigs ./ec1 -d0 -c 'i=0;while [ $i -le 5 ]; do sudo atiflash -p $i modded-rx5808-xxx*.rom ;((i++));done'
+#
 # This script will save a config file so you can quickly run commands in the future.
-#   Use ./ec -r as the last command to remove config file with the pass info
+#   Use ./ec -r as the last command to remove config file with any password data
 #
 #####################################################################################
-# If you found this script useful please donate BitCoin to:
+# If you found this script useful Please donate BitCoin to:
 # BTC 1G6DcU8GrK1JuXWEJ4CZL2cLyCT57r6en2
 # or Ethereum to:
 # ETH 0x42D23fC535af25babbbB0337Cf45dF8a54e43C37
@@ -27,6 +31,7 @@
 # Configure defaults
 delay="2"
 sshoptions="-o StrictHostKeyChecking=no"
+# Other  sshoptions -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no
 debug=""
 
 # Lets make some functions
@@ -44,6 +49,7 @@ function show_help() {
  echo "  Note: you can string arguments and commands like -qkr or -qcecho 0 or -sqf bios.rom folder/modbios.rom"
  exit 9
 }
+
 function get_panel() {
 cl=0
 if [ -e /var/run/ethos/url.file ] ; then
@@ -61,6 +67,7 @@ else
   done
 fi
 }
+
 function save_config() {
   echo ""
   echo "Config Wizard - If you get asked the same question again check formatting."
@@ -86,39 +93,38 @@ function save_config() {
   fi
   if [ -e "$config" ]; then echo "$config written"; fi
 }
+
 function load_config() {
 if [ -e "$config" ] ; then
   if [ -z "$cl" ] ; then echo "Found $config, using it."; fi
   # shellcheck source=/dev/null
   source "$config"
-  echo ""
 else
   save_config
 fi
 }
+
 function make_key() {
 if [ -z "$panel" ] ; then get_panel; fi
-  lkeyfile="$HOME/.ssh/ethos-$panel" rkeyfile="/home/ethos/.ssh/authorized_keys"
-  if [ -e "$lkeyfile" ] ; then
-    printf '%s/.ssh/ethos-%s key set already generated.\n' "$HOME" "$panel"
-    while [[ ! ("$sendkey" =~ ^[yY]([eE][sS])?$|^[nN][oO]?$) ]]; do
-      read -r -p "Would you like to send that key to all rigs? (y/n) : " sendkey
-    done
+lkeyfile="$HOME/.ssh/ethos-$panel" rkeyfile="/home/ethos/.ssh/authorized_keys"
+if [ -e "$lkeyfile" ] ; then
+  printf '%s/.ssh/ethos-%s key set already generated.\n' "$HOME" "$panel"
+  while [[ ! ("$sendkey" =~ ^[yY]([eE][sS])?$|^[nN][oO]?$) ]]; do
+    read -r -p "Would you like to send that key to all rigs? (y/n) : " sendkey
+  done
   if [[ $sendkey =~ ^[yY]([eE][sS])?$ ]] ; then
     cmd="echo $(cat "$lkeyfile".pub) >> $rkeyfile && chmod 600 $rkeyfile && sort -u $rkeyfile -o $rkeyfile"
     delay="0"
-    else
-      echo "To save the key to a rig manually run:"
-      echo "   ssh-copy-id -i $lkeyfile.pub ethos@RigIPAddress"
-      echo "Nothing further todo."
-      exit 1
-    fi
   else
-    ssh-keygen -t rsa -N "" -C "== EthOS net $panel" -f "$HOME"/.ssh/ethos-"$panel" || exit 2
-    ssh-add "$lkeyfile"
-    lkeyfile="$HOME/.ssh/ethos-$panel" rkeyfile="/home/ethos/.ssh/authorized_keys"
-    cmd="echo $(cat "$lkeyfile".pub) >> $rkeyfile && chmod 600 $rkeyfile && sort -u $rkeyfile -o $rkeyfile"
+    echo "To save the key to a rig manually run:"
+    echo "   ssh-copy-id -i $lkeyfile.pub ethos@RigIPAddress"
+    echo "Nothing further todo."
+    exit 1
   fi
+else
+  ssh-keygen -t rsa -N "" -C "== EthOS net $panel" -f "$HOME"/.ssh/ethos-"$panel" || exit 2
+  cmd="echo $(cat "$lkeyfile".pub) >> $rkeyfile && chmod 600 $rkeyfile && sort -u $rkeyfile -o $rkeyfile"
+fi
 }
 
 # Set a path for the config file
@@ -157,22 +163,27 @@ fi
 
 # If you have more than one key, lets narrow it down by panel
 mapfile -t identfile < <(find "$HOME"/.ssh/ -regextype posix-extended -regex '.*ethos\-[a-zA-Z0-9]?{6}$')
-for i in "${!identfile[@]}"; do
-   if [[ "${identfile[$i]}" =~ "ethos-$panel" ]]; then
-       identpos="${i}";
-   fi
+for i in "${!identfile[@]}" ; do
+  if [[ "${identfile[$i]}" =~ "ethos-$panel" ]] ; then
+    identpos="${i}";
+  fi
 done
-if [ "$pass" ] ; then
+if [ "$pass" ] ; then 
   ident=""
 elif [ "$identpos" ] ; then
-  ident=" -i \"${identfile[$identpos]}\""
+  ident=" -i \"${identfile[$identpos]}\""	
+elif [ -z $pass ] && [ -z $identpos ] ; then
+    mapfile -t allkeys < <(find "$HOME"/.ssh/ -type f ! -name "*.*" ! -name known_hosts ! -name authorized_keys ! -name config)
+  for i in "${!allkeys[@]}" ; do
+    ident+=$(printf " -i \"%s\"" "${allkeys[$i]}")
+  done
 else 
   echo "No pass and no key found. Starting config wizard."
   save_config
 fi
 #echo "$ident"
 
-# Prep IP array
+# Prep IP array and sort for easy failure identifiation
 if [ "$panel" ] && [ -z "$range" ] ; then
   mapfile -t iplist < <(wget http://"$panel".ethosdistro.com/?ips=yes -q -O -)
 elif [ ! -z "$range" ] ; then
@@ -215,22 +226,23 @@ if [ "$cmd" ] ; then
   for ip in "${ipls[@]}" ; do
     echo "$cmd ${extra[*]} sent to $ip"
     if [ -z "$pass" ] && [ -z $quick ] ; then
-      eval ssh "$debug" "$sshoptions""$ident" ethos@"$ip" \'"$cmd ${extra[*]}"\' || continue
+      eval ssh "$debug""$sshoptions""$ident" ethos@"$ip" \'"$cmd" "${extra[*]}"\' || continue
       sleep "$delay"
     elif [ -z "$pass" ] ; then
-      eval ssh "$debug" "$sshoptions""$ident" ethos@"$ip" \'"$cmd ${extra[*]}"\' & disown $!
+      eval ssh "$debug""$sshoptions""$ident" ethos@"$ip" \'"$cmd" "${extra[*]}"\' & disown $!
     elif [ -z "$quick" ] ; then
-      sshpass -p "$pass" ssh "$debug" "$sshoptions" ethos@"$ip" "$cmd ${extra[*]}" || continue
+      sshpass -p "$pass" ssh "$debug""$sshoptions" -o PubkeyAuthentication=no ethos@"$ip" "$cmd" "${extra[*]}" || continue
       sleep "$delay"
     else
-      sshpass -p "$pass" ssh "$debug""$sshoptions" ethos@"$ip" "$cmd ${extra[*]}" & disown $!
+      sshpass -p "$pass" ssh "$debug""$sshoptions" -o PubkeyAuthentication=no ethos@"$ip" "$cmd" "${extra[*]}" & disown $!
     fi
   done
   if [ "$quick" ] ; then
-    echo ""
-    echo "Commands issued, waiting for any reply:"
-    sleep 4
+    echo "
+Commands issued, waiting for any reply:"
+    sleep 5
   fi
+# This should be the better way to do keys but it fails more often.  
 #elif [[ ! -z "$key" ]] ; then
 #  for ip in "${ipls[@]}" ; do
 #    echo "SSH key sent to $ip"
@@ -245,19 +257,20 @@ if [ "$cmd" ] ; then
 elif [ "$file" ] ; then
   for ip in "${ipls[@]}" ; do
     if [ -z "$pass" ] && [ -z $quick ] ; then
-      eval scp "$sshoptions""$ident""$debug" "$file" ethos@"$ip":"${extra[0]}" || continue
+      eval scp "$debug""$sshoptions""$ident" "$file" ethos@"$ip":"${extra[0]}" || continue
       sleep "$delay"
     elif [ -z "$pass" ] ; then
-      eval scp "$sshoptions""$ident""$debug" "$file" ethos@"$ip":"${extra[0]}" & disown $!
+      eval scp "$debug""$sshoptions""$ident" "$file" ethos@"$ip":"${extra[0]}" & disown $!
     elif [ -z "$quick" ] ; then
-      sshpass -p "$pass" scp "$sshoptions""$debug" "$file" ethos@"$ip":"${extra[0]}" || continue
+      sshpass -p "$pass" scp "$debug""$sshoptions" -o PubkeyAuthentication=no "$file" ethos@"$ip":"${extra[0]}" || continue
       sleep "$delay"
     else
-      sshpass -p "$pass" scp "$sshoptions""$debug" "$file" ethos@"$ip":"${extra[0]}" & disown $!
+      sshpass -p "$pass" scp "$debug""$sshoptions" -o PubkeyAuthentication=no "$file" ethos@"$ip":"${extra[0]}" & disown $!
     fi
   done
   if [ ! -z "$quick" ] ; then
-    echo "Sending files. . ."
+    echo "
+Sending files. . ."
     sleep 5
   fi
 fi
