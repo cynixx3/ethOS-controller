@@ -31,7 +31,8 @@
 # Configure defaults
 delay="2"
 sshoptions="-o StrictHostKeyChecking=no"
-# Other  sshoptions -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no
+# Its useful to start with StrictHostkeyChecking off and then remove it when the network is configured
+# Useful options -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no
 debug=""
 
 # Lets make some functions
@@ -122,8 +123,10 @@ if [ -e "$lkeyfile" ] ; then
     exit 1
   fi
 else
-  ssh-keygen -t rsa -N "" -C "== EthOS net $panel" -f "$HOME"/.ssh/ethos-"$panel" || exit 2
+  ssh-keygen -t rsa -N "" -C "== EthOS net $panel" -f "$HOME/.ssh/ethos-$panel" || exit 2
+  ssh-add "$lkeyfile"
   cmd="echo $(cat "$lkeyfile".pub) >> $rkeyfile && chmod 600 $rkeyfile && sort -u $rkeyfile -o $rkeyfile"
+  delay="0"
 fi
 }
 
@@ -161,7 +164,7 @@ else
   shift $(($OPTIND-1)); extra=( "$*" )
 fi
 
-# If you have more than one key, lets narrow it down by panel
+# If you have more than one key, lets try to narrow it down by panel
 mapfile -t identfile < <(find "$HOME"/.ssh/ -regextype posix-extended -regex '.*ethos\-[a-zA-Z0-9]?{6}$')
 for i in "${!identfile[@]}" ; do
   if [[ "${identfile[$i]}" =~ "ethos-$panel" ]] ; then
