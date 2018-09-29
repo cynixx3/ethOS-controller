@@ -53,17 +53,22 @@ function show_help() {
 
 function get_panel() {
 cl=0
+if [ "$keynote" ] ; then
+  echo "Please supply a \"panel\" name for the key to be saved as"
+fi
 if [ -e /var/run/ethos/url.file ] ; then
-  until [[ "$usepanel" =~ ^[yY]([eE][sS])?$|^[nN][oO]?$ ]] ; do
+  until [[ $usepanel =~ ^[yY]([eE][sS])?$|^[nN][oO]?$ ]] ; do
     read -r -p "EthOS detected, would you like to use IP's from: $(cat /var/run/ethos/url.file) (y/n) : " usepanel
   done
-  if [[ "$usepanel" =~ ^[yY]([eE][sS])?$ ]] ; then
+  if [[ $usepanel =~ ^[yY]([eE][sS])?$ ]] ; then
     [[ $(cat /var/run/ethos/url.file) =~ [a-zA-Z0-9]{6} ]]
     panel=${BASH_REMATCH[0]}
   fi
 else 
-  until [[ "$panel" =~ ^[a-zA-Z0-9]{6}$|^$ && $cl -ge 1 ]] ; do 
-    read -r -p "Enter EthOS panel name (6 characters)(leave blank to set an IP range) : " panel
+  until [[ $panel =~ ^[a-zA-Z0-9]{6}$|^$ && $cl -ge 1 ]] ; do 
+    printf "Enter EthOS panel name"
+    if [ -z "$keynote" ] ; then printf " (6 characters)(leave blank to set an IP range)" ; fi
+    read -r -p " : " panel
     cl=$((cl + 1))
   done
 fi
@@ -75,11 +80,11 @@ function save_config() {
   get_panel
   if [ -z "$panel" ] ; then
   # You can use two octet subnet and IP's without changes
-  until [[ "$network" =~ ^([0-1]?[0-9]?[0-9]\.|2[0-5][0-9]\.)+?([0-1]?[0-9]?[0-9]|2[0-5][0-9])$ ]] ; do
-      read -r -p "What is the first three octets (subnet) of the IP address separated by dots? (e.g. 192.168.0) : " network
+  until [[ $network =~ ^([0-1]?[0-9]?[0-9]\.|2[0-5][0-9]\.)+?([0-1]?[0-9]?[0-9]|2[0-5][0-9])$ ]] ; do
+      read -r -p "What is the first three octets (subnet) of the IP address separated by dots? (IE: 192.168.0) : " network
     done
-    until [[ "$range" =~ ^([0-1]?[0-9]?[0-9]\.|2[0-5][0-9]\.)?([0-1]?[0-9]?[0-9]|2[0-5][0-9])$ ]] ; do
-      read -r -p "Enter the last octet of each IP separated by a space (2 3 10 100 101) : " -a range
+    until [[ $iprange =~ ^([0-1]?[0-9]?[0-9]\.|2[0-5][0-9]\.)?([0-1]?[0-9]?[0-9]|2[0-5][0-9])$ ]] ; do
+      read -r -p "Enter the last octet of each IP separated by a space (IE: 2 3 10 100 101) : " -a iprange
     done
   fi
   echo ""
@@ -87,9 +92,12 @@ function save_config() {
   echo "Default password is 'live', leave blank if using ssh keys"
   read -r -p "Enter your SSH pass and press [Enter] : " -s pass
   printf '\n'
-  if [ ! -z "$panel" ] ; then  
+  if [ -n "$panel" ] ; then  
     printf 'panel=%s\npass=%s\n' "$panel" "$pass" > "$config"
   else
+    IFS=$'\n'
+    mapfile -t range < <(sort -n -u -t . -k 1,1 -k 2,2 <<<"${iprange[*]}")
+    unset IFS
     printf 'network=%s\nrange=(%s)\npass="%s"\n' "$network" "${range[*]}" "$pass" > "$config"
   fi
   if [ -e "$config" ]; then echo "$config written"; fi
@@ -98,7 +106,6 @@ function save_config() {
 function load_config() {
 if [ -e "$config" ] ; then
   if [ -z "$cl" ] ; then echo "Found $config, using it."; fi
-  # shellcheck source=/dev/null
   source "$config"
 else
   save_config
@@ -106,26 +113,36 @@ fi
 }
 
 function make_key() {
-if [ -z "$panel" ] ; then get_panel; fi
+if [ -z "$panel" ] ; then 
+  keynote="1"
+  get_panel
+fi
 lkeyfile="$HOME/.ssh/ethos-$panel" rkeyfile="/home/ethos/.ssh/authorized_keys"
 if [ -e "$lkeyfile" ] ; then
   printf '%s/.ssh/ethos-%s key set already generated.\n' "$HOME" "$panel"
-  while [[ ! ("$sendkey" =~ ^[yY]([eE][sS])?$|^[nN][oO]?$) ]]; do
+  while [[ ! ($sendkey =~ ^[yY]([eE][sS])?$|^[nN][oO]?$) ]]; do
     read -r -p "Would you like to send that key to all rigs? (y/n) : " sendkey
   done
   if [[ $sendkey =~ ^[yY]([eE][sS])?$ ]] ; then
-    cmd="echo $(cat "$lkeyfile".pub) >> $rkeyfile && chmod 600 $rkeyfile && sort -u $rkeyfile -o $rkeyfile"
+    if [ -z "$pass" ] ; then
+      echo "Default password is 'live'"
+      until [ -n "$pass" ] ; do 
+        read -r -p "Enter your SSH pass and press [Enter] : " -s pass
+      done
+    fi
+    cmd="echo $(cat "$lkeyfile".pub) >> $rkeyfile; chmod 600 $rkeyfile; sort -u $rkeyfile -o $rkeyfile"
     delay="0"
   else
-    echo "To save the key to a rig manually run:"
-    echo "   ssh-copy-id -i $lkeyfile.pub ethos@RigIPAddress"
-    echo "Nothing further todo."
+    echo "To save the key to a rig manually run:
+   ssh-copy-id -i $lkeyfile.pub ethos@RigIPAddress
+Use a different panel name to generate a new key file
+Nothing further todo."
     exit 1
   fi
 else
   ssh-keygen -t rsa -N "" -C "== EthOS net $panel" -f "$HOME/.ssh/ethos-$panel" || exit 2
   ssh-add "$lkeyfile"
-  cmd="echo $(cat "$lkeyfile".pub) >> $rkeyfile && chmod 600 $rkeyfile && sort -u $rkeyfile -o $rkeyfile"
+  cmd="echo $(cat "$lkeyfile".pub) >> $rkeyfile; chmod 600 $rkeyfile; sort -u $rkeyfile -o $rkeyfile"
   delay="0"
 fi
 }
@@ -161,13 +178,13 @@ done
 if [[ $OPTIND = 1 ]] ; then
   load_config; cmd="$*" extra=""
 else
-  shift $(($OPTIND-1)); extra=( "$*" )
+  shift $((OPTIND-1)); extra=( "$*" )
 fi
 
 # If you have more than one key, lets try to narrow it down by panel
 mapfile -t identfile < <(find "$HOME"/.ssh/ -regextype posix-extended -regex '.*ethos\-[a-zA-Z0-9]?{6}$')
 for i in "${!identfile[@]}" ; do
-  if [[ "${identfile[$i]}" =~ "ethos-$panel" ]] ; then
+  if [[ ${identfile[$i]} =~ ethos-$panel ]] ; then
     identpos="${i}";
   fi
 done
@@ -175,7 +192,7 @@ if [ "$pass" ] ; then
   ident=""
 elif [ "$identpos" ] ; then
   ident=" -i \"${identfile[$identpos]}\""	
-elif [ -z $pass ] && [ -z $identpos ] ; then
+elif [ -z "$pass" ] && [ -z "$identpos" ] ; then
     mapfile -t allkeys < <(find "$HOME"/.ssh/ -type f ! -name "*.*" ! -name known_hosts ! -name authorized_keys ! -name config)
   for i in "${!allkeys[@]}" ; do
     ident+=$(printf " -i \"%s\"" "${allkeys[$i]}")
@@ -189,15 +206,17 @@ fi
 # Prep IP array and sort for easy failure identifiation
 if [ "$panel" ] && [ -z "$range" ] ; then
   mapfile -t iplist < <(wget http://"$panel".ethosdistro.com/?ips=yes -q -O -)
-elif [ ! -z "$range" ] ; then
+else
+	  #if [ -n "${range[1]}" ] ; then
   for addr in ${range[*]} ; do 
     iplist+=("$network"."$addr")
   done
 fi
-ipls=($(echo "${iplist[@]}"|tr " " "\n"|sort -n -t . -k 3,3 -k 4,4 |tr "\n" " "))
-
+IFS=$'\n'
+mapfile -t ipls < <(sort -n -t . -k 3,3 -k 4,4 <<<"${iplist[*]}")
+unset IFS
 # Can you use sshpass? Would you like to try and install it?
-if ! [ -x "$(command -v sshpass)" ] && [ ! -z  "$pass" ]; then 
+if ! [ -x "$(command -v sshpass)" ] && [ -n  "$pass" ]; then 
   echo "Warning: sshpass is not installed on this system"
   while [[ ! ("$isshp" =~ ^[yY]([eE][sS])?$|^[nN][oO]?$) ]]; do
     read -r -p "Would you like to try and automatically install sshpass? : " isshp
@@ -224,15 +243,16 @@ if ! [ -x "$(command -v sshpass)" ] && [ ! -z  "$pass" ]; then
   fi
 fi
  
+#set -x
 # The Work load. Command or file, for each IP on the panel, key or pass authentication, one at a time or all at once?
 if [ "$cmd" ] ; then
   for ip in "${ipls[@]}" ; do
-    echo "$cmd ${extra[*]} sent to $ip"
+    echo "Sending \"$cmd ${extra[*]}\" to $ip"
     if [ -z "$pass" ] && [ -z $quick ] ; then
-      eval ssh "$debug""$sshoptions""$ident" ethos@"$ip" \'"$cmd" "${extra[*]}"\' || continue
+      eval ssh "$debug""$sshoptions""$ident" ethos@"$ip" "$cmd" "${extra[*]}" || continue
       sleep "$delay"
     elif [ -z "$pass" ] ; then
-      eval ssh "$debug""$sshoptions""$ident" ethos@"$ip" \'"$cmd" "${extra[*]}"\' & disown $!
+      eval ssh "$debug""$sshoptions""$ident" ethos@"$ip" "$cmd" "${extra[*]}" & disown $!
     elif [ -z "$quick" ] ; then
       sshpass -p "$pass" ssh "$debug""$sshoptions" -o PubkeyAuthentication=no ethos@"$ip" "$cmd" "${extra[*]}" || continue
       sleep "$delay"
@@ -246,7 +266,7 @@ Commands issued, waiting for any reply:"
     sleep 5
   fi
 # This should be the better way to do keys but it fails more often.  
-#elif [[ ! -z "$key" ]] ; then
+#elif [ -n "$key" ] ; then
 #  for ip in "${ipls[@]}" ; do
 #    echo "SSH key sent to $ip"
 #    if ((!pass)) ; then
@@ -271,7 +291,7 @@ elif [ "$file" ] ; then
       sshpass -p "$pass" scp "$debug""$sshoptions" -o PubkeyAuthentication=no "$file" ethos@"$ip":"${extra[0]}" & disown $!
     fi
   done
-  if [ ! -z "$quick" ] ; then
+  if [ -n "$quick" ] ; then
     echo "
 Sending files. . ."
     sleep 5
