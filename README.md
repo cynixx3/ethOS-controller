@@ -48,6 +48,8 @@ Examples:
 ./ec -qc 'putconf && minestop'
 ./ec -d0 -c 'tail -1 /var/run/ethos/miner_hashes.file | sed \'s/ /+/g\' | bc'
 ./ec -f rx5708-113-XFXD009-100-samsung-modifiedstraps.rom /home/ethos/
+./ec1 -d0 -c 'i=0;while [ $i -le 5 ]; do sudo atiflash -p $i rx5708-113-XFXD009-100-samsung-modifiedstraps.rom ;((i++));done'
+./ec -qc 'ver=$(cat /opt/ethos/etc/version);if [ "$ver" != "1.3.1" ]; then echo "I am $(ethos-readconf worker)" ; fi'
 ~~~
 
 ## Maintainer
