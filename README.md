@@ -50,6 +50,8 @@ Examples:
 ./ec -f rx5708-113-XFXD009-100-samsung-modifiedstraps.rom /home/ethos/
 ./ec -d0 -c 'i=0;while [ $i -le 5 ]; do sudo atiflash -p $i rx5708-113-XFXD009-100-samsung-modifiedstraps.rom ;((i++));done'
 ./ec -qc 'ver=$(cat /opt/ethos/etc/version);if [ "$ver" != "1.3.1" ]; then echo "I am $(ethos-readconf worker)" ; fi'
+./ec -qc 'sudo wget https://raw.githubusercontent.com/cynixx3/third-party-miner-installer-for-ethos/master/miner-manager -O /usr/bin/miner-manager && sudo chmod +x /usr/bin/miner-manager'
+./ec -qc miner-manager phoenixminer install
 ~~~
 
 ## Maintainer
